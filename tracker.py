@@ -1,13 +1,15 @@
-import re
 import json
 import datetime
+import shlex
 
 file_path = "tasks.json"
 running = True
+tasks = {}
 
 # The following functions respond to each command.
 
-def addTask(tasks, id, task_name):
+def addTask(task_name):
+    global tasks
     if tasks:
         id = max([int(key) for key in tasks.keys()]) + 1
         print("ID updated.")
@@ -31,7 +33,8 @@ def addTask(tasks, id, task_name):
     print(f"Task added: {task_name}, ID:{id}")
     return id
 
-def updateTask(tasks, id, task_name):
+def updateTask(id, task_name):
+    global tasks
     for task_id in tasks:
         if task_id == id:
             tasks[id].update({"description": task_name})
@@ -45,6 +48,7 @@ def updateTask(tasks, id, task_name):
         json.dump(tasks, json_file, indent=4)
 
 def deleteTask(id):
+    global tasks
     if id in tasks:
         del tasks[id]
         print(f"Task with ID {id} deleted.")
@@ -67,6 +71,7 @@ def deleteTask(id):
         print(f"ID number {id} not found.")
 
 def markInProgress(id):
+    global tasks
     if id in tasks:
         tasks[id].update({"status": "in-progress"})
         tasks[id].update({"updatedAt": datetime.datetime.now().strftime("%A, %Y-%m-%d %H:%M:%S")})
@@ -78,6 +83,7 @@ def markInProgress(id):
         json.dump(tasks, json_file, indent=4)
 
 def markDone(id):
+    global tasks
     if id in tasks:
         tasks[id].update({"status": "done"})
         tasks[id].update({"updatedAt": datetime.datetime.now().strftime("%A, %Y-%m-%d %H:%M:%S")})
@@ -88,24 +94,11 @@ def markDone(id):
     with open(file_path, "w") as json_file:
         json.dump(tasks, json_file, indent=4)
 
-def list():
+def list(status=None):
     found = False
 
     for outer_key, value in tasks.items():
-        found = True
-        print()
-        print(f"Task #{outer_key}")
-        for key, value in value.items():
-            print(f"{key}: {value}")
-        print()
-    if not found:
-        print("No tasks have been found.")
-
-def listDone(status):
-    found = False
-    
-    for outer_key, value in tasks.items():
-        if status == value["status"]:
+        if status is None or status == value["status"]:
             found = True
             print()
             print(f"Task #{outer_key}")
@@ -115,77 +108,42 @@ def listDone(status):
         else:
             continue
     if not found:
-        print("No tasks found marked as done.")
+        err_text = "No tasks found." if status is None else f"No tasks found marked as {status}."
+        print(err_text)
 
-def listTodo(status):
-    found = False
-    
-    for outer_key, value in tasks.items():
-        if status == value["status"]:
-            found = True
-            print()
-            print(f"Task #{outer_key}")
-            for key, value in value.items():
-                print(f"{key}: {value}")
-            print()
-        else:
-            continue
-    if not found:
-        print("No tasks found marked as to-do.")
+commands = {
+    "add": addTask,
+    "update": updateTask,
+    "list": list,
+    "delete": deleteTask,
+    "mark-in-progress": markInProgress,
+    "mark-done": markDone
+}
 
-def listInProgress(status):
-    found = False
-    
-    for outer_key, value in tasks.items():
-        if status == value["status"]:
-            found = True
-            print()
-            print(f"Task #{outer_key}")
-            for key, value in value.items():
-                print(f"{key}: {value}")
-            print()
-        else:
-            continue
-    if not found:
-        print("No tasks found marked as in-progress.")    
+def process_input(user_input):#main function that identifies commands, and executes respective functions
+    #
+    # Split the input with shlex.split(), which turns
+    # a space-separated string into a list, while respecting quoted
+    # substrings.
+    # 
+    # Example: `add "Buy groceries"` becomes ['add', 'Buy groceries']
+    #
+    split_input = shlex.split(user_input)
 
-def process_input(id, user_input):#main function that identifies commands, and executes respective functions
-    match_add = re.match(r'^add\s+"(.+)"$', user_input)
-    match_update = re.match(r'^update\s+(\d+)\s+"(.+)"$', user_input)
-    match_list = re.match(r'^list$', user_input)
-    match_delete = re.match(r"^delete\s+(\d+)$", user_input)
-    match_mkinpg = re.match(r'^mark-in-progress\s+(\d+)$', user_input)
-    match_mkdone = re.match(r'^mark-done\s+(\d+)$', user_input)
-    match_listdone = re.match(r'^list\s+(done)$', user_input)
-    match_listtodo = re.match(r'^list\s+(todo)$', user_input)
-    match_listinpgr = re.match(r'^list\s+(in-progress)$', user_input)
-    if match_add:
-        task_name = match_add.group(1)
-        addTask(tasks, id, task_name)
-    elif match_update:
-        id = match_update.group(1)
-        task_name = match_update.group(2)
-        updateTask(tasks, id, task_name)
-    elif match_delete:
-        id = match_delete.group(1)
-        deleteTask(id)
-    elif match_mkinpg:
-        id = match_mkinpg.group(1)
-        markInProgress(id)
-    elif match_mkdone:
-        id = match_mkdone.group(1)
-        markDone(id)
-    elif match_list:
-        list()
-    elif match_listdone:
-        status = match_listdone.group(1)
-        listDone(status)
-    elif match_listtodo:
-        status = match_listtodo.group(1)
-        listTodo(status)
-    elif match_listinpgr:
-        status = match_listinpgr.group(1)
-        listInProgress(status)
+    # The first element of the list will be the command.
+    # We can use it to look up the command function in the commands dict.
+    command_func = commands.get(split_input[0])
+
+    if command_func:
+        try:
+            # Unpack and send the rest of the input list to the command
+            # function as parameters.
+            command_func(*split_input[1:])
+        except:
+            # Most of the time, a TypeError will be thrown if the user enters a command
+            # incorrectly, because the command function will receive the incorrect
+            # number or type of parameters that it's expecting.
+            print("Error running the command! Did you write it correctly?")
     else:
         print("Invalid command.")
 
@@ -199,4 +157,4 @@ with open(file_path, "r") as json_file: #loads data from JSON file
 
 while running: #CLI
     user_input = input("task-cli ")
-    process_input(id, user_input)
+    process_input(user_input)
